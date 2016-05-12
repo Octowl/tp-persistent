@@ -1,5 +1,6 @@
 var express = require('express');
 var router = express.Router();
+var apiRouter = require('./api');
 var Hotel = require('../models/hotel');
 var Restaurant = require('../models/restaurant');
 var Activity = require('../models/activity');
@@ -35,5 +36,7 @@ router.get('/', function (req, res, next) {
         .catch(next);
 
 });
+
+router.use('/api', apiRouter);
 
 module.exports = router;
