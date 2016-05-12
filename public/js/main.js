@@ -9,11 +9,7 @@ $(function () {
         activity: $('#activity-list').children('ul')
     };
 
-    var collections = {
-        hotel: hotels,
-        restaurant: restaurants,
-        activity: activities
-    };
+
 
     var $itinerary = $('#itinerary');
 
@@ -35,7 +31,6 @@ $(function () {
      */
 
     $addItemButton.on('click', function () {
-
         var $this = $(this);
         var $select = $this.siblings('select');
         var sectionName = $select.attr('data-type');
@@ -43,7 +38,6 @@ $(function () {
         var $list = $listGroups[sectionName];
         var collection = collections[sectionName];
         var item = findInCollection(collection, itemId);
-
         var marker = drawMarker(map, sectionName, item.place.location);
 
         $list.append(create$item(item));
@@ -101,9 +95,7 @@ $(function () {
 
     });
 
-    fillInOptions(hotels, $('#hotel-choices'));
-    fillInOptions(restaurants, $('#restaurant-choices'));
-    fillInOptions(activities, $('#activity-choices'));
+
 
     /*
     --------------------------
@@ -131,11 +123,7 @@ $(function () {
 
     // End create element functions ----
 
-    function fillInOptions(collection, $selectElement) {
-        collection.forEach(function (item) {
-            $selectElement.append('<option value="' + item.id + '">' + item.name + '</option>');
-        });
-    }
+
 
     function switchDay(dayNum) {
         wipeDay();
