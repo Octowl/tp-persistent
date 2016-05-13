@@ -1,4 +1,4 @@
-$(function () {
+$(function () { 
 
     var map = initializeMap();
     var $addItemButton = $('#options-panel').find('button');
@@ -8,7 +8,6 @@ $(function () {
         restaurant: $('#restaurant-list').children('ul'),
         activity: $('#activity-list').children('ul')
     };
-
 
 
     var $itinerary = $('#itinerary');
@@ -21,6 +20,7 @@ $(function () {
     var days = [
         []
     ];
+    var dbDays;
 
     var currentDayNum = 1;
 
@@ -30,6 +30,12 @@ $(function () {
     --------------------------
      */
 
+
+    //Load All Days
+    loadAllDays();
+    //Load All of the items here 
+
+
     $addItemButton.on('click', function () {
         var $this = $(this);
         var $select = $this.siblings('select');
@@ -38,18 +44,20 @@ $(function () {
         var $list = $listGroups[sectionName];
         var collection = collections[sectionName];
         var item = findInCollection(collection, itemId);
-        var marker = drawMarker(map, sectionName, item.place.location);
+        addItemToDayInDb(sectionName, itemId).done(function(day){
+            var marker = drawMarker(map, sectionName, item.place.location);
+            $list.append(create$item(item));
+            days[currentDayNum - 1].push({
+                item: item,
+                marker: marker,
+                type: sectionName
+            });
+            mapFit();
 
-        $list.append(create$item(item));
-
-        days[currentDayNum - 1].push({
-            item: item,
-            marker: marker,
-            type: sectionName
-        });
-
-        mapFit();
-
+            })
+            .fail(function(){
+                console.log("Error around line 59");
+            });
     });
 
     $itinerary.on('click', 'button.remove', function () {
@@ -71,9 +79,17 @@ $(function () {
     $addDayButton.on('click', function () {
         var newDayNum = days.length + 1;
         var $newDayButton = createDayButton(newDayNum);
-        days.push([]);
-        $addDayButton.before($newDayButton);
-        switchDay(newDayNum);
+        createNewDayInDb(newDayNum)
+        .done(function(day){
+            dbDays.push(day);
+            days.push([]);
+            $addDayButton.before($newDayButton);
+            switchDay(newDayNum);
+        })
+        .fail(function(){
+            console.error('WTF!')
+
+        });
     });
 
     $dayButtonList.on('click', '.day-btn', function () {
@@ -83,16 +99,24 @@ $(function () {
 
     $removeDayButton.on('click', function () {
 
-        wipeDay();
-        days.splice(currentDayNum - 1, 1);
+        deleteDayFromDb(currentDayNum)
+        .done(function(){
+            console.log(`Day ${currentDayNum} deleted`);
+            wipeDay();
+            days.splice(currentDayNum - 1, 1);
 
-        if (days.length === 0) {
-            days.push([]);
-        }
-
-        reRenderDayButtons();
-        switchDay(1);
-
+            if (days.length === 0) {
+                days.push([]);
+                return createNewDayInDb(1);
+            }
+        })
+        .done(function(){
+            reRenderDayButtons();
+            switchDay(1);
+        })
+        .fail(function(){
+            console.error("You failed to delete!")
+        });
     });
 
 
@@ -102,6 +126,7 @@ $(function () {
     END NORMAL LOGIC
     --------------------------
      */
+
 
     // Create element functions ----
 
@@ -123,14 +148,77 @@ $(function () {
 
     // End create element functions ----
 
+    /**************************
+    * AJAX based functions
+    ***************************/ 
 
+    function loadAllDays(){
+        $.get('/api/days/').done(function(foundDays){
+            dbDays = foundDays;
+            if(!hasDayOne()) {
+                createNewDayInDb(1);
+            }
+            foundDays.forEach(addDayToDaysArray);
+            reRenderDayButtons();
+            switchDay(1);
+
+        }).fail(function(){
+            console.log("ERROR");
+        });
+    }
+
+    function loadAllItems(){
+
+    }
+
+    function getSingleDayFromDb(dayNum){
+        var dayId = dbDays[dayNum-1].id;
+        return $.get('/api/days/' + dayId)
+    }
+
+    function createNewDayInDb(dayNum) {
+        return $.post('/api/days/', {num: dayNum});
+    }
+
+    function deleteDayFromDb(dayNum) {
+        var dayId = dbDays[dayNum-1].id;
+        return $.ajax({
+            url: '/api/days/' + dayId,
+            method: 'DELETE'
+        })
+    }
+
+    function addItemToDayInDb(itemType, itemId){
+        //IM HERE
+        var option= itemType+'Id';
+        var modelType= pluralizer(itemType);
+        var curDayId= dbDays[currentDayNum-1].id; 
+        //String interpolation? 
+        var options= {};
+        options[option] = itemId
+
+        return $.post('/api/days/'+ curDayId +'/'+ modelType, options);
+    }
+
+    /**************************
+    * End AJAX based functions
+    ***************************/ 
 
     function switchDay(dayNum) {
-        wipeDay();
-        currentDayNum = dayNum;
-        renderDay();
-        $dayTitle.text('Day ' + dayNum);
-        mapFit();
+        getSingleDayFromDb(dayNum)
+        .done(function(day){
+            console.log(day);
+            addDayToDaysArray(day);
+            wipeDay();
+            currentDayNum = dayNum;
+            renderDay();
+            $dayTitle.text('Day ' + dayNum);
+            mapFit();
+        })
+        .fail(function(){
+            console.error("Shit's broken");
+        })
+        
     }
 
     function renderDay() {
@@ -208,6 +296,60 @@ $(function () {
         return -1;
     }
 
-    // End utility functions ----
+    function addDayToDaysArray(day) {
+        days[day.num - 1] = [];
+        var item, collection, itemId, marker;
+        if(day.hotel) {
+            itemId = day.hotel.id;
+            collection = collections.hotel;
+            item = findInCollection(collection, itemId);
+            marker = drawMarker(map, "hotel", item.place.location);
+            days[day.num - 1].push({
+                item: item,
+                marker: marker,
+                type: 'hotel'
+            })
+        }
+        if(day.restaurants) {
+            day.restaurants.forEach(function(restaurant){
+                itemId = restaurant.id;
+                collection = collections.restaurant;
+                item = findInCollection(collection, itemId);
+                marker = drawMarker(map, "restaurant", item.place.location);
+                days[day.num - 1].push({
+                    item: item,
+                    marker: marker,
+                    type: 'restaurant'
+                })
+            });
+        }
+        if(day.activities) {
+            day.activities.forEach(function(activity){
+                itemId = activity.id;
+                collection = collections.activity;
+                item = findInCollection(collection, itemId);
+                marker = drawMarker(map, "activity", item.place.location);
+                days[day.num - 1].push({
+                    item: item,
+                    marker: marker,
+                    type: 'activity'
+                })
+            });
+        }
+    }
 
+    function hasDayOne() {
+        return dbDays.some(function(day){
+            return day.num === 1;
+        })
+    }
+
+    function pluralizer(word){
+        if(word==='activity'){
+            return word.slice(0,-1)+"ies";
+        } 
+        return word+"s";
+    }
+    // End utility functions ----
 });
+
